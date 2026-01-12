@@ -4,26 +4,16 @@ import (
 	"net/http"
 
 	"github.com/gofiber/fiber/v2"
+
+	"github.com/github/orchestrator/backend/internal/engine"
 )
 
-type Cluster struct {
-	Name string `json:"name"`
+type Handlers struct {
+	engine engine.Engine
 }
 
-type Instance struct {
-	Key  string `json:"key"`
-	Role string `json:"role"`
-}
-
-type Topology struct {
-	Clusters  []Cluster  `json:"clusters"`
-	Instances []Instance `json:"instances"`
-}
-
-type Handlers struct{}
-
-func New() *Handlers {
-	return &Handlers{}
+func New(engine engine.Engine) *Handlers {
+	return &Handlers{engine: engine}
 }
 
 func (h *Handlers) Health(c *fiber.Ctx) error {
@@ -39,16 +29,25 @@ func (h *Handlers) Live(c *fiber.Ctx) error {
 }
 
 func (h *Handlers) Clusters(c *fiber.Ctx) error {
-	clusters := []Cluster{}
+	clusters, err := h.engine.Clusters()
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
 	return c.JSON(clusters)
 }
 
 func (h *Handlers) Instances(c *fiber.Ctx) error {
-	instances := []Instance{}
+	instances, err := h.engine.Instances()
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
 	return c.JSON(instances)
 }
 
 func (h *Handlers) Topology(c *fiber.Ctx) error {
-	topology := Topology{Clusters: []Cluster{}, Instances: []Instance{}}
+	topology, err := h.engine.Topology()
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
 	return c.JSON(topology)
 }

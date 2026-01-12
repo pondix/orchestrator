@@ -18,6 +18,7 @@ import (
 
 	"github.com/github/orchestrator/backend/internal/api"
 	"github.com/github/orchestrator/backend/internal/config"
+	"github.com/github/orchestrator/backend/internal/engine"
 	"github.com/github/orchestrator/backend/internal/events"
 	"github.com/github/orchestrator/backend/internal/logging"
 )
@@ -50,8 +51,9 @@ func main() {
 		return err
 	})
 
-	handlers := api.New()
 	hub := events.NewHub()
+	engineStub := engine.NewStub()
+	handlers := api.New(engineStub)
 
 	app.Get("/healthz", handlers.Health)
 	app.Get("/readyz", handlers.Ready)
