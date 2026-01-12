@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	nethttp "net/http"
 	"strings"
 
@@ -93,11 +94,16 @@ func Verify(r *nethttp.Request, validOUs []string) error {
 	return errors.New("Invalid OU")
 }
 
-// TODO: make this testable?
+type verifyOUsFunc func(r *nethttp.Request, validOUs []string) error
+
 func VerifyOUs(validOUs []string) martini.Handler {
+	return verifyOUsHandler(validOUs, Verify)
+}
+
+func verifyOUsHandler(validOUs []string, verify verifyOUsFunc) martini.Handler {
 	return func(res nethttp.ResponseWriter, req *nethttp.Request, c martini.Context) {
 		log.Debug("Verifying client OU")
-		if err := Verify(req, validOUs); err != nil {
+		if err := verify(req, validOUs); err != nil {
 			nethttp.Error(res, err.Error(), nethttp.StatusUnauthorized)
 		}
 	}
@@ -142,11 +148,9 @@ func ReadPEMData(pemFile string, pemPass []byte) ([]byte, error) {
 		return pemData, err
 	}
 
-	// We should really just get the pem.Block back here, if there's other
-	// junk on the end, warn about it.
-	pemBlock, rest := pem.Decode(pemData)
-	if len(rest) > 0 {
-		log.Warning("Didn't parse all of", pemFile)
+	pemBlock, err := decodePEMBlock(pemData, pemFile)
+	if err != nil {
+		return pemData, err
 	}
 
 	if x509.IsEncryptedPEMBlock(pemBlock) {
@@ -154,13 +158,13 @@ func ReadPEMData(pemFile string, pemPass []byte) ([]byte, error) {
 		pemData, err = x509.DecryptPEMBlock(pemBlock, pemPass)
 		if err != nil {
 			return pemData, err
-		} else {
-			log.Info("Decrypted", pemFile, "successfully")
 		}
+		log.Info("Decrypted", pemFile, "successfully")
 		// Shove the decrypted DER bytes into a new pem Block with blank headers
-		var newBlock pem.Block
-		newBlock.Type = pemBlock.Type
-		newBlock.Bytes = pemData
+		newBlock := pem.Block{
+			Type:  pemBlock.Type,
+			Bytes: pemData,
+		}
 		// This is now like reading in an uncrypted key from a file and stuffing it
 		// into a byte stream
 		pemData = pem.EncodeToMemory(&newBlock)
@@ -185,25 +189,47 @@ func IsEncryptedPEM(pemFile string) bool {
 	if err != nil {
 		return false
 	}
-	pemBlock, _ := pem.Decode(pemData)
+	pemBlock, err := decodePEMBlock(pemData, pemFile)
+	if err != nil {
+		return false
+	}
 	if len(pemBlock.Bytes) == 0 {
 		return false
 	}
 	return x509.IsEncryptedPEMBlock(pemBlock)
 }
 
+func decodePEMBlock(pemData []byte, pemFile string) (*pem.Block, error) {
+	// We should really just get the pem.Block back here, if there's other
+	// junk on the end, warn about it.
+	pemBlock, rest := pem.Decode(pemData)
+	if pemBlock == nil {
+		return nil, fmt.Errorf("no PEM block found in %s", pemFile)
+	}
+	if len(rest) > 0 {
+		log.Warning("Didn't parse all of", pemFile)
+	}
+	return pemBlock, nil
+}
+
+type tlsListenFunc func(network, addr string, config *tls.Config) (net.Listener, error)
+type httpServeFunc func(l net.Listener, handler nethttp.Handler) error
+
 // ListenAndServeTLS acts identically to http.ListenAndServeTLS, except that it
 // expects TLS configuration.
-// TODO: refactor so this is testable?
 func ListenAndServeTLS(addr string, handler nethttp.Handler, tlsConfig *tls.Config) error {
+	return listenAndServeTLS(addr, handler, tlsConfig, tls.Listen, nethttp.Serve)
+}
+
+func listenAndServeTLS(addr string, handler nethttp.Handler, tlsConfig *tls.Config, listen tlsListenFunc, serve httpServeFunc) error {
 	if addr == "" {
 		// On unix Listen calls getaddrinfo to parse the port, so named ports are fine as long
 		// as they exist in /etc/services
 		addr = ":https"
 	}
-	l, err := tls.Listen("tcp", addr, tlsConfig)
+	l, err := listen("tcp", addr, tlsConfig)
 	if err != nil {
 		return err
 	}
-	return nethttp.Serve(l, handler)
+	return serve(l, handler)
 }
