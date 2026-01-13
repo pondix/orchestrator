@@ -1,0 +1,70 @@
+CREATE TABLE IF NOT EXISTS clusters (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_clusters_name (name)
+);
+
+CREATE TABLE IF NOT EXISTS instances (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  cluster_id BIGINT UNSIGNED NOT NULL,
+  host VARCHAR(255) NOT NULL,
+  port INT NOT NULL,
+  role VARCHAR(64) NOT NULL,
+  last_seen_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_instances_cluster (cluster_id),
+  CONSTRAINT fk_instances_cluster FOREIGN KEY (cluster_id) REFERENCES clusters(id)
+);
+
+CREATE TABLE IF NOT EXISTS topology_snapshots (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  cluster_id BIGINT UNSIGNED NOT NULL,
+  snapshot_json JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_snapshots_cluster (cluster_id),
+  CONSTRAINT fk_snapshots_cluster FOREIGN KEY (cluster_id) REFERENCES clusters(id)
+);
+
+CREATE TABLE IF NOT EXISTS instance_operations (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  instance_id BIGINT UNSIGNED NULL,
+  operation_type VARCHAR(128) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  command_text TEXT NULL,
+  progress_percent INT NOT NULL DEFAULT 0,
+  result_json JSON NULL,
+  error_text TEXT NULL,
+  started_at TIMESTAMP NULL,
+  completed_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_instance_ops_instance (instance_id)
+);
+
+CREATE TABLE IF NOT EXISTS failover_events (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  cluster_id BIGINT UNSIGNED NOT NULL,
+  event_type VARCHAR(128) NOT NULL,
+  event_json JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_failover_events_cluster (cluster_id),
+  CONSTRAINT fk_failover_events_cluster FOREIGN KEY (cluster_id) REFERENCES clusters(id)
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  actor VARCHAR(255) NULL,
+  action VARCHAR(255) NOT NULL,
+  target VARCHAR(255) NULL,
+  metadata_json JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id)
+);
